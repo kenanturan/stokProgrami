@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Restoran Stok Takip</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <div class="container mt-5">
+        <!-- Stok İşlem Formu -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3>Stok İşlemi</h3>
+            </div>
+            <div class="card-body">
+                <form id="transactionForm">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <select class="form-select" id="transType" required>
+                                <option value="">İşlem Türü Seçin</option>
+                                <option value="IN">Giriş</option>
+                                <option value="OUT">Çıkış</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" class="form-control" id="productName" placeholder="Ürün Adı" required>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" class="form-control" id="quantity" placeholder="Miktar" required>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="text" class="form-control" id="unit" placeholder="Birim" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">Kaydet</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Stok Durumu Bölümü - Rapor bölümünden önce ekleyin -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3>Güncel Stok Durumu</h3>
+            </div>
+            <div class="card-body">
+                <div id="stockStatus"></div>
+                <button onclick="getStockStatus()" class="btn btn-info">Stok Durumunu Güncelle</button>
+            </div>
+        </div>
+
+        <!-- Rapor Bölümü -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Stok Hareket Raporu</h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <input type="date" id="startDate" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <input type="date" id="endDate" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <div class="btn-group w-100">
+                            <button onclick="getReport()" class="btn btn-primary">Rapor Al</button>
+                            <button onclick="getReport('csv')" class="btn btn-success">CSV İndir</button>
+                            <button onclick="getReport('pdf')" class="btn btn-danger">PDF İndir</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="reportResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // Stok işlem formu gönderimi
+        document.getElementById('transactionForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const data = {
+                transType: document.getElementById('transType').value,
+                productName: document.getElementById('productName').value,
+                quantity: parseFloat(document.getElementById('quantity').value),
+                unit: document.getElementById('unit').value
+            };
+
+            fetch('/api/transactions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Sunucu hatası');
+                }
+                return response.json();
+            })
+            .then(result => {
+                // Form alanlarını temizle
+                this.reset();
+                
+                // Başarı mesajını göster
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+                alertDiv.innerHTML = `
+                    İşlem başarıyla kaydedildi
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                this.appendChild(alertDiv);
+
+                // Eğer tarihler seçiliyse raporu güncelle
+                const startDate = document.getElementById('startDate').value;
+                const endDate = document.getElementById('endDate').value;
+                if (startDate && endDate) {
+                    getReport();
+                }
+
+                getStockStatus(); // Stok durumunu güncelle
+            })
+            .catch(error => {
+                console.error('Hata:', error);
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-3';
+                alertDiv.innerHTML = `
+                    İşlem kaydedilirken bir hata oluştu
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                this.appendChild(alertDiv);
+            });
+        });
+
+        // Rapor alma fonksiyonu
+        function getReport(format = '') {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            // Debug için tarih bilgilerini konsola yazdıralım
+            console.log('Başlangıç tarihi:', startDate);
+            console.log('Bitiş tarihi:', endDate);
+
+            // Tarih kontrolü
+            if (!startDate || !endDate) {
+                alert('Lütfen başlangıç ve bitiş tarihlerini seçin');
+                return;
+            }
+
+            // Bitiş tarihini günün sonuna ayarlayalım
+            const endDateTime = new Date(endDate);
+            endDateTime.setHours(23, 59, 59);
+            
+            let url = `/api/reports?start_date=${startDate}&end_date=${endDate}`;
+            if (format) {
+                url += `&format=${format}`;
+                window.location.href = url;
+                return;
+            }
+
+            // Debug için URL'i konsola yazdıralım
+            console.log('Rapor URL:', url);
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Sunucu hatası');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Debug için gelen veriyi konsola yazdıralım
+                    console.log('Rapor verisi:', data);
+
+                    const result = document.getElementById('reportResult');
+                    if (!data || data.length === 0) {
+                        result.innerHTML = '<div class="alert alert-info">Bu tarih aralığında işlem bulunamadı.</div>';
+                        return;
+                    }
+
+                    let html = '<table class="table table-striped">';
+                    html += '<thead class="table-dark"><tr><th>Ürün</th><th>İşlem Türü</th><th>Miktar</th><th>Birim</th><th>Tarih</th></tr></thead>';
+                    html += '<tbody>';
+                    data.forEach(item => {
+                        const transType = item.TransType === 'IN' ? 
+                            '<span class="badge bg-success">Giriş</span>' : 
+                            '<span class="badge bg-danger">Çıkış</span>';
+                        html += `<tr>
+                            <td>${item.ProductName}</td>
+                            <td>${transType}</td>
+                            <td>${item.Quantity}</td>
+                            <td>${item.Unit}</td>
+                            <td>${new Date(item.TransactionAt).toLocaleString('tr-TR')}</td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    result.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Hata:', error);
+                    document.getElementById('reportResult').innerHTML = 
+                        '<div class="alert alert-danger">Rapor alınırken bir hata oluştu. Lütfen tarihleri kontrol edin.</div>';
+                });
+        }
+
+        // Stok durumu alma fonksiyonu
+        function getStockStatus() {
+            fetch('/api/stocks')
+                .then(response => response.json())
+                .then(data => {
+                    const result = document.getElementById('stockStatus');
+                    if (data.length === 0) {
+                        result.innerHTML = '<div class="alert alert-info">Henüz stok hareketi bulunmuyor.</div>';
+                        return;
+                    }
+
+                    let html = '<table class="table table-striped">';
+                    html += '<thead class="table-dark"><tr><th>Ürün</th><th>Miktar</th><th>Birim</th></tr></thead>';
+                    html += '<tbody>';
+                    data.forEach(item => {
+                        const quantity = parseFloat(item.Quantity);
+                        const rowClass = quantity <= 0 ? 'table-danger' : '';
+                        html += `<tr class="${rowClass}">
+                            <td>${item.ProductName}</td>
+                            <td>${quantity}</td>
+                            <td>${item.Unit}</td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    result.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Hata:', error);
+                    document.getElementById('stockStatus').innerHTML = 
+                        '<div class="alert alert-danger">Stok durumu alınırken bir hata oluştu.</div>';
+                });
+        }
+
+        // Sayfa yüklendiğinde ve her işlemden sonra stok durumunu güncelle
+        document.addEventListener('DOMContentLoaded', getStockStatus);
+    </script>
+</body>
+</html> 
