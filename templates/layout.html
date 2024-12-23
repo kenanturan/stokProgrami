@@ -74,6 +74,36 @@
                 <div id="reportResult"></div>
             </div>
         </div>
+
+        <!-- Reçeteler Bölümü -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h3>Reçeteler</h3>
+            </div>
+            <div class="card-body">
+                <!-- Reçete Ekleme Formu -->
+                <form id="recipeForm" class="mb-4">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <input type="text" class="form-control" id="recipeName" placeholder="Reçete Adı" required>
+                        </div>
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" id="recipeDescription" placeholder="Açıklama" required>
+                        </div>
+                    </div>
+                    <div id="ingredients" class="mt-3">
+                        <!-- Malzemeler buraya dinamik olarak eklenecek -->
+                    </div>
+                    <div class="mt-3">
+                        <button type="button" onclick="addIngredient()" class="btn btn-secondary">Malzeme Ekle</button>
+                        <button type="submit" class="btn btn-primary">Reçete Kaydet</button>
+                    </div>
+                </form>
+
+                <!-- Reçete Listesi -->
+                <div id="recipeList"></div>
+            </div>
+        </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -212,8 +242,9 @@
             fetch('/api/stocks')
                 .then(response => response.json())
                 .then(data => {
+                    console.log('Stok verisi:', data);
                     const result = document.getElementById('stockStatus');
-                    if (data.length === 0) {
+                    if (!data || data.length === 0) {
                         result.innerHTML = '<div class="alert alert-info">Henüz stok hareketi bulunmuyor.</div>';
                         return;
                     }
@@ -222,26 +253,301 @@
                     html += '<thead class="table-dark"><tr><th>Ürün</th><th>Miktar</th><th>Birim</th></tr></thead>';
                     html += '<tbody>';
                     data.forEach(item => {
-                        const quantity = parseFloat(item.Quantity);
+                        const productName = item.ProductName || item.productName || '';
+                        const quantity = parseFloat(item.Quantity || item.quantity || 0);
+                        const unit = item.Unit || item.unit || '';
                         const rowClass = quantity <= 0 ? 'table-danger' : '';
                         html += `<tr class="${rowClass}">
-                            <td>${item.ProductName}</td>
+                            <td>${productName}</td>
                             <td>${quantity}</td>
-                            <td>${item.Unit}</td>
+                            <td>${unit}</td>
                         </tr>`;
                     });
                     html += '</tbody></table>';
                     result.innerHTML = html;
                 })
                 .catch(error => {
-                    console.error('Hata:', error);
+                    console.error('Hata detayı:', error);
                     document.getElementById('stockStatus').innerHTML = 
-                        '<div class="alert alert-danger">Stok durumu alınırken bir hata oluştu.</div>';
+                        '<div class="alert alert-danger">Stok durumu alınırken bir hata oluştu: ' + error.message + '</div>';
                 });
         }
 
         // Sayfa yüklendiğinde ve her işlemden sonra stok durumunu güncelle
         document.addEventListener('DOMContentLoaded', getStockStatus);
+
+        let ingredientCount = 0;
+
+        function addIngredient() {
+            const container = document.getElementById('ingredients');
+            const row = document.createElement('div');
+            row.className = 'row g-3 mt-1 ingredient-row';
+            row.innerHTML = `
+                <div class="col-md-4">
+                    <input type="text" class="form-control" name="ingredientName" placeholder="Malzeme Adı" required>
+                </div>
+                <div class="col-md-4">
+                    <input type="number" class="form-control" name="ingredientQuantity" placeholder="Miktar" step="0.01" required>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-control" name="ingredientUnit" required>
+                        <option value="">Birim Seç</option>
+                        <option value="kg">Kilogram</option>
+                        <option value="gram">Gram</option>
+                        <option value="litre">Litre</option>
+                        <option value="adet">Adet</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button type="button" class="btn btn-danger" onclick="this.parentElement.parentElement.remove()">X</button>
+                </div>
+            `;
+            container.appendChild(row);
+        }
+
+        // Reçete ekleme formunu gönder
+        document.getElementById('recipeForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Malzemeleri topla
+            const ingredients = [];
+            document.querySelectorAll('.ingredient-row').forEach(row => {
+                const name = row.querySelector('[name="ingredientName"]').value;
+                const quantity = parseFloat(row.querySelector('[name="ingredientQuantity"]').value);
+                const unit = row.querySelector('[name="ingredientUnit"]').value;
+                
+                // Sadece geçerli malzemeleri ekle
+                if (name && quantity && unit) {
+                    ingredients.push({
+                        name: name,
+                        quantity: quantity,
+                        unit: unit
+                    });
+                }
+            });
+
+            const data = {
+                name: document.getElementById('recipeName').value,
+                description: document.getElementById('recipeDescription').value,
+                ingredients: ingredients
+            };
+
+            console.log('Gönderilecek veri:', data);
+
+            fetch('/api/recipes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                console.log('API yanıt status:', response.status);
+                return response.json().then(data => {
+                    console.log('API yanıt verisi:', data);
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Bir hata oluştu');
+                    }
+                    return data;
+                });
+            })
+            .then(result => {
+                console.log('İşlem sonucu:', result);
+                alert('Reçete başarıyla kaydedildi');
+                this.reset();
+                document.getElementById('ingredients').innerHTML = '';
+                loadRecipes();
+            })
+            .catch(error => {
+                console.error('Hata detayı:', error);
+                alert('Reçete kaydedilirken bir hata oluştu: ' + error.message);
+            });
+        });
+
+        // Reçeteleri yükleme
+        function loadRecipes() {
+            console.log('Reçeteler yükleniyor...');
+            fetch('/api/recipes')
+                .then(response => {
+                    console.log('API yanıtı:', response.status);
+                    return response.json().then(data => {
+                        console.log('API yanıt verisi:', data);
+                        if (!response.ok) {
+                            throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                        }
+                        return data;
+                    });
+                })
+                .then(recipes => {
+                    console.log('Alınan reçeteler:', recipes);
+                    const list = document.getElementById('recipeList');
+                    if (!recipes || recipes.length === 0) {
+                        list.innerHTML = '<div class="alert alert-info">Henüz reçete bulunmuyor.</div>';
+                        return;
+                    }
+
+                    let html = '<div class="list-group mt-3">';
+                    recipes.forEach(recipe => {
+                        console.log('İşlenen reçete:', recipe);
+                        // Sadece geçerli malzemeleri filtrele
+                        const ingredients = (recipe.Ingredients || []).filter(ing => 
+                            ing.Name && ing.Quantity > 0 && ing.Unit
+                        );
+                        
+                        html += `
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-1">${recipe.Name || recipe.name || 'İsimsiz Reçete'}</h5>
+                                    <div>
+                                        <button onclick="checkRecipeStock(${recipe.ID || recipe.id})" class="btn btn-sm btn-info">
+                                            Stok Kontrolü
+                                        </button>
+                                        <button onclick="produceRecipe(${recipe.ID || recipe.id})" class="btn btn-sm btn-success">
+                                            Üret
+                                        </button>
+                                        <button onclick="deleteRecipe(${recipe.ID || recipe.id})" class="btn btn-sm btn-danger">
+                                            Sil
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="mb-1">${recipe.Description || recipe.description || ''}</p>
+                                <small>Malzemeler:</small>
+                                <ul>
+                                    ${ingredients.map(ing => {
+                                        const name = ing.Name || ing.name || '';
+                                        const quantity = ing.Quantity || ing.quantity || 0;
+                                        const unit = ing.Unit || ing.unit || '';
+                                        return name && quantity > 0 ? `<li>${quantity} ${unit} ${name}</li>` : '';
+                                    }).join('')}
+                                </ul>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    list.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Hata detayı:', error);
+                    document.getElementById('recipeList').innerHTML = 
+                        '<div class="alert alert-danger">Reçeteler yüklenirken bir hata oluştu: ' + error.message + '</div>';
+                });
+        }
+
+        // Stok kontrolü
+        function checkRecipeStock(recipeId) {
+            fetch(`/api/recipes/${recipeId}/check-stock`)
+                .then(response => response.json())
+                .then(data => {
+                    let message = `<h5>${data.recipe.name}</h5>`;
+                    if (data.canCook) {
+                        message += '<div class="alert alert-success">Bu reçete için yeterli malzeme var!</div>';
+                    } else {
+                        message += '<div class="alert alert-warning">Eksik malzemeler:</div><ul>';
+                        data.missingIngredients.forEach(ing => {
+                            message += `<li>${ing.name}: Gereken ${ing.required} ${ing.unit}, Mevcut ${ing.availableAmount} ${ing.unit}</li>`;
+                        });
+                        message += '</ul>';
+                    }
+                    alert(message);
+                })
+                .catch(error => {
+                    console.error('Hata:', error);
+                    alert('Stok kontrolü yapılırken bir hata oluştu');
+                });
+        }
+
+        // Reçete silme fonksiyonu
+        function deleteRecipe(recipeId) {
+            if (!confirm('Bu reçeteyi silmek istediğinizden emin misiniz?')) {
+                return;
+            }
+
+            const url = `/api/recipes/${recipeId}`;
+            console.log('\n=== Silme İsteği Gönderiliyor ===');
+            console.log('URL:', url);
+            console.log('Method: DELETE');
+
+            fetch(url, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                console.log('\n=== Yanıt Alındı ===');
+                console.log('Status:', response.status);
+                console.log('Status Text:', response.statusText);
+                console.log('Headers:', Object.fromEntries([...response.headers]));
+                
+                return response.text().then(text => {
+                    console.log('Response Text:', text);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}, message: ${text}`);
+                    }
+                    
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.error('JSON parse error:', e);
+                        return { message: 'Reçete silindi' };
+                    }
+                });
+            })
+            .then(data => {
+                console.log('İşlem başarılı:', data);
+                alert(data.message || 'Reçete başarıyla silindi');
+                loadRecipes();
+            })
+            .catch(error => {
+                console.error('Silme hatası:', error);
+                alert('Reçete silinirken bir hata oluştu: ' + error.message);
+            });
+        }
+
+        // Üretim fonksiyonu ekle
+        function produceRecipe(recipeId) {
+            // Önce stok kontrolü yap
+            fetch(`/api/recipes/${recipeId}/check-stock`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.canCook) {
+                        let message = 'Yetersiz stok:\n';
+                        data.missingIngredients.forEach(ing => {
+                            message += `${ing.name}: Gereken ${ing.required} ${ing.unit}, Mevcut ${ing.availableAmount} ${ing.unit}\n`;
+                        });
+                        alert(message);
+                        return;
+                    }
+
+                    // Stok yeterliyse üretimi başlat
+                    if (confirm('Bu reçeteyi üretmek ve malzemeleri stoktan düşmek istediğinize emin misiniz?')) {
+                        fetch(`/api/recipes/${recipeId}/produce`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(result => {
+                            alert(result.message);
+                            getStockStatus(); // Stok durumunu güncelle
+                        })
+                        .catch(error => {
+                            console.error('Üretim hatası:', error);
+                            alert('Üretim sırasında bir hata oluştu');
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Stok kontrolü hatası:', error);
+                    alert('Stok kontrolü yapılırken bir hata oluştu');
+                });
+        }
+
+        // Sayfa yüklendiğinde reçeteleri yükle
+        document.addEventListener('DOMContentLoaded', loadRecipes);
     </script>
 </body>
 </html> 

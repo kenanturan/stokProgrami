@@ -7,17 +7,17 @@ import (
 type TransactionType string
 
 const (
-	TransactionTypeIn  TransactionType = "IN"
-	TransactionTypeOut TransactionType = "OUT"
+	TransactionTypeIn  TransactionType = "in"
+	TransactionTypeOut TransactionType = "out"
 )
 
 type Transaction struct {
-	ID            uint            `gorm:"primaryKey"`
-	TransType     TransactionType `gorm:"column:trans_type"`
-	ProductName   string          `gorm:"column:product_name"`
-	Quantity      float64         `gorm:"column:quantity"`
-	Unit          string          `gorm:"column:unit"`
-	TransactionAt time.Time       `gorm:"column:transaction_at;default:CURRENT_TIMESTAMP"`
-	CreatedAt     time.Time       `gorm:"column:created_at"`
-	UpdatedAt     time.Time       `gorm:"column:updated_at"`
+	ID            uint64          `json:"id" gorm:"primaryKey"`
+	TransType     TransactionType `json:"transType"`
+	ProductName   string          `json:"productName"`
+	Quantity      float64         `json:"quantity"`
+	Unit          string          `json:"unit"`
+	TransactionAt time.Time       `json:"transactionAt" gorm:"default:CURRENT_TIMESTAMP"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
